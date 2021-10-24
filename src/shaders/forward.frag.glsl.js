@@ -19,12 +19,6 @@ export default function(params) {
     return normap.y * surftan + normap.x * surfbinor + normap.z * geomnor;
   }
 
-  struct Light {
-    vec3 position;
-    float radius;
-    vec3 color;
-  };
-
   float ExtractFloat(sampler2D texture, int textureWidth, int textureHeight, int index, int component) {
     float u = float(index + 1) / float(textureWidth + 1);
     int pixel = component / 4;
@@ -42,8 +36,15 @@ export default function(params) {
     }
   }
 
+  struct Light {
+    vec3 position;
+    float radius;
+    vec3 color;
+  };
+
   Light UnpackLight(int index) {
     Light light;
+
     float u = float(index + 1) / float(${params.numLights + 1});
     vec4 v1 = texture2D(u_lightbuffer, vec2(u, 0.0));
     vec4 v2 = texture2D(u_lightbuffer, vec2(u, 0.5));

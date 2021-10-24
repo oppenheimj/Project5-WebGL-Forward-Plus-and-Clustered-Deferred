@@ -9,15 +9,23 @@ import TextureBuffer from './textureBuffer';
 export default class ForwardRenderer {
   constructor() {
     // Create a texture to store light data
+    // We can't sanely upload arbitrary data to the shader, so we pack this light information into
+    // a texture. The TextureBuffer parameters are saying that there are 100 lights, and each one
+    // is defined by 8 values. Under the covers of TextureBuffer, we say that because each "pixel"
+    // stores only four values, then each light's data will end up spread across two pixels worth.
     this._lightTexture = new TextureBuffer(NUM_LIGHTS, 8);
 
     // Initialize a shader program. The fragment shader source is compiled based on the number of lights
-    this._shaderProgram = loadShaderProgram(vsSource, fsSource({
-      numLights: NUM_LIGHTS,
-    }), {
-      uniforms: ['u_viewProjectionMatrix', 'u_colmap', 'u_normap', 'u_lightbuffer'],
-      attribs: ['a_position', 'a_normal', 'a_uv'],
-    });
+    // This shader program object contains both the actual shader program as well as mappings from the
+    // attrib and uniform names to their locations on the GPU.
+    this._shaderProgram = loadShaderProgram(
+      vsSource,
+      fsSource({ numLights: NUM_LIGHTS }),
+      {
+        uniforms: ['u_viewProjectionMatrix', 'u_colmap', 'u_normap', 'u_lightbuffer'],
+        attribs: ['a_position', 'a_normal', 'a_uv'],
+      }
+    );
 
     this._projectionMatrix = mat4.create();
     this._viewMatrix = mat4.create();
@@ -32,6 +40,8 @@ export default class ForwardRenderer {
     mat4.multiply(this._viewProjectionMatrix, this._projectionMatrix, this._viewMatrix);
 
     // Update the buffer used to populate the texture packed with light data
+    // For each light, upate the values inside the lightTexture buffer using this
+    // insane indexing scheme.
     for (let i = 0; i < NUM_LIGHTS; ++i) {
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 0) + 0] = scene.lights[i].position[0];
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 0) + 1] = scene.lights[i].position[1];
@@ -42,7 +52,9 @@ export default class ForwardRenderer {
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 1) + 1] = scene.lights[i].color[1];
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 1) + 2] = scene.lights[i].color[2];
     }
+
     // Update the light texture
+    // Flush these updates out to the GPU
     this._lightTexture.update();
 
     // Bind the default null framebuffer which is the screen

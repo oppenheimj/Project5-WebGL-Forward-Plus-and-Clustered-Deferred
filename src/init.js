@@ -10,7 +10,7 @@ import { Spector } from 'spectorjs';
 
 export var ABORTED = false;
 export function abort(message) {
-  ABORTED = true;
+  ABORTED = true; 
   throw message;
 }
 

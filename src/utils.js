@@ -40,27 +40,30 @@ function linkShader(vs, fs) {
 function addShaderLocations(result, shaderLocations) {
   if (shaderLocations && shaderLocations.uniforms && shaderLocations.uniforms.length) {
     for (let i = 0; i < shaderLocations.uniforms.length; ++i) {
-      result = Object.assign(result, {
+      Object.assign(result, {
         [shaderLocations.uniforms[i]]: gl.getUniformLocation(result.glShaderProgram, shaderLocations.uniforms[i]),
       });
     }
   }
+
   if (shaderLocations && shaderLocations.attribs && shaderLocations.attribs.length) {
     for (let i = 0; i < shaderLocations.attribs.length; ++i) {
-      result = Object.assign(result, {
+      Object.assign(result, {
         [shaderLocations.attribs[i]]: gl.getAttribLocation(result.glShaderProgram, shaderLocations.attribs[i]),
       });
     }
   }
+
   return result;
 }
 
+// So this is returning an object containing the actual shader program, along with
+// mapping from uniform and attrib names to the pointer to those things on the GPU.
 export function loadShaderProgram(vsSource, fsSource, shaderLocations) {
   const vs = compileShader(vsSource, gl.VERTEX_SHADER);
   const fs = compileShader(fsSource, gl.FRAGMENT_SHADER);
-  return addShaderLocations({
-    glShaderProgram: linkShader(vs, fs),
-  }, shaderLocations);
+
+  return addShaderLocations({ glShaderProgram: linkShader(vs, fs) }, shaderLocations);
 }
 
 const quadPositions = new Float32Array([
