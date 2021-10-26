@@ -7,12 +7,12 @@ import toTextureFrag from '../shaders/deferredToTexture.frag.glsl';
 import QuadVertSource from '../shaders/quad.vert.glsl';
 import fsSource from '../shaders/deferred.frag.glsl.js';
 import TextureBuffer from './textureBuffer';
-import BaseRenderer from './base';
+import { BaseRenderer, MAX_LIGHTS_PER_CLUSTER } from './base';
 
 export const NUM_GBUFFERS = 4;
 
 export default class ClusteredDeferredRenderer extends BaseRenderer {
-  constructor(xSlices, ySlices, zSlices) {
+  constructor(xSlices, ySlices, zSlices, camera) {
     super(xSlices, ySlices, zSlices);
     
     this.setupDrawBuffers(canvas.width, canvas.height);
@@ -29,13 +29,19 @@ export default class ClusteredDeferredRenderer extends BaseRenderer {
       numLights: NUM_LIGHTS,
       numGBuffers: NUM_GBUFFERS,
     }), {
-      uniforms: ['u_gbuffers[0]', 'u_gbuffers[1]', 'u_gbuffers[2]', 'u_gbuffers[3]'],
+      uniforms: [
+        'u_gbuffers[0]', 'u_gbuffers[1]', 'u_gbuffers[2]', 'u_gbuffers[3]', 
+        'u_lightbuffer', 'u_clusterbuffer',
+        'u_xSlices', 'u_ySlices', 'u_zSlices', 'u_nearClip', 'u_farClip', 'u_viewMatrix',
+        'u_clusterTextureWidth', 'u_clusterTextureHeight'],
       attribs: ['a_uv'],
     });
 
     this._projectionMatrix = mat4.create();
     this._viewMatrix = mat4.create();
     this._viewProjectionMatrix = mat4.create();
+
+    this.initializeMiniFrustums(camera);
   }
 
   setupDrawBuffers(width, height) {
@@ -91,10 +97,12 @@ export default class ClusteredDeferredRenderer extends BaseRenderer {
 
     gl.bindTexture(gl.TEXTURE_2D, this._depthTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, null);
+
     for (let i = 0; i < NUM_GBUFFERS; i++) {
       gl.bindTexture(gl.TEXTURE_2D, this._gbuffers[i]);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.FLOAT, null);
     }
+
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
@@ -142,7 +150,8 @@ export default class ClusteredDeferredRenderer extends BaseRenderer {
     this._lightTexture.update();
 
     // Update the clusters for the frame
-    this.updateClusters(camera, this._viewMatrix, scene);
+    this.updateClustersEfficient(scene, this._viewMatrix);
+    // this.updateClusters(camera, this._viewMatrix, scene);
 
     // Bind the default null framebuffer which is the screen
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -162,6 +171,36 @@ export default class ClusteredDeferredRenderer extends BaseRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this._gbuffers[i]);
       gl.uniform1i(this._progShade[`u_gbuffers[${i}]`], i + firstGBufferBinding);
     }
+
+    // Set the light texture as a uniform input to the shader
+    gl.activeTexture(gl[`TEXTURE${NUM_GBUFFERS}`]);
+    gl.bindTexture(gl.TEXTURE_2D, this._lightTexture.glTexture);
+    gl.uniform1i(this._progShade.u_lightbuffer, NUM_GBUFFERS);
+
+    // Set the cluster texture as a uniform input to the shader
+    gl.activeTexture(gl[`TEXTURE${NUM_GBUFFERS+1}`]);
+    gl.bindTexture(gl.TEXTURE_2D, this._clusterTexture.glTexture);
+    gl.uniform1i(this._progShade.u_clusterbuffer, NUM_GBUFFERS+1);
+
+    
+    // Pass viewMatrix to convert depth into camera space
+    gl.uniformMatrix4fv(this._progShade.u_viewMatrix, false, this._viewMatrix);
+
+    gl.uniform1f(this._progShade.u_nearClip, camera.near);
+    gl.uniform1f(this._progShade.u_farClip, camera.far);
+
+    // These are really integers, but have to convert to float in the
+    // shader for math, so might as well make them a float here.
+    gl.uniform1f(this._progShade.u_canvasHeight, canvas.height);
+    gl.uniform1f(this._progShade.u_canvasWidth, canvas.width);
+    gl.uniform1f(this._progShade.u_xSlices, this._xSlices);
+    gl.uniform1f(this._progShade.u_ySlices, this._ySlices);
+    gl.uniform1f(this._progShade.u_zSlices, this._zSlices);
+
+    var width = this._xSlices * this._ySlices * this._zSlices;
+    var height = Math.ceil((MAX_LIGHTS_PER_CLUSTER + 1) / 4);
+    gl.uniform1i(this._progShade.u_clusterTextureWidth, width);
+    gl.uniform1i(this._progShade.u_clusterTextureHeight, height);
 
     renderFullscreenQuad(this._progShade);
   }
