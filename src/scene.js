@@ -195,7 +195,6 @@ class Scene {
       gl.drawElements(model.gltf.mode, model.gltf.indices.length, model.gltf.indicesComponentType, 0);
     }
   }
-
 }
 
 export default Scene;

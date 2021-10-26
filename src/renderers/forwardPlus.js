@@ -5,10 +5,11 @@ import { NUM_LIGHTS } from '../scene';
 import vsSource from '../shaders/forwardPlus.vert.glsl';
 import fsSource from '../shaders/forwardPlus.frag.glsl.js';
 import TextureBuffer from './textureBuffer';
-import BaseRenderer from './base';
+import {BaseRenderer, MAX_LIGHTS_PER_CLUSTER } from './base';
+import { Matrix4 } from 'three';
 
 export default class ForwardPlusRenderer extends BaseRenderer {
-  constructor(xSlices, ySlices, zSlices) {
+  constructor(xSlices, ySlices, zSlices, camera) {
     super(xSlices, ySlices, zSlices);
 
     // Create a texture to store light data
@@ -17,25 +18,29 @@ export default class ForwardPlusRenderer extends BaseRenderer {
     this._shaderProgram = loadShaderProgram(vsSource, fsSource({
       numLights: NUM_LIGHTS,
     }), {
-      uniforms: ['u_viewProjectionMatrix', 'u_colmap', 'u_normap', 'u_lightbuffer', 'u_clusterbuffer'],
+      uniforms: [
+        'u_viewProjectionMatrix', 'u_colmap', 'u_normap', 'u_lightbuffer', 'u_clusterbuffer',
+        'u_xSlices', 'u_ySlices', 'u_zSlices', 'u_nearClip', 'u_farClip', 'u_viewMatrix',
+        'u_clusterTextureWidth', 'u_clusterTextureHeight', 'u_cameraPosition'],
       attribs: ['a_position', 'a_normal', 'a_uv'],
     });
 
     this._projectionMatrix = mat4.create();
     this._viewMatrix = mat4.create();
     this._viewProjectionMatrix = mat4.create();
+
+    this.initializeMiniFrustums(camera);
   }
 
   render(camera, scene) {
-    // Update the camera matrices
     camera.updateMatrixWorld();
     mat4.invert(this._viewMatrix, camera.matrixWorld.elements);
     mat4.copy(this._projectionMatrix, camera.projectionMatrix.elements);
     mat4.multiply(this._viewProjectionMatrix, this._projectionMatrix, this._viewMatrix);
 
-    // Update cluster texture which maps from cluster index to light list
-    this.updateClusters(camera, this._viewMatrix, scene);
-    
+    this.updateClustersEfficient(scene, this._viewMatrix);
+    // this.updateClusters(camera, this._viewMatrix, scene);
+
     // Update the buffer used to populate the texture packed with light data
     for (let i = 0; i < NUM_LIGHTS; ++i) {
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 0) + 0] = scene.lights[i].position[0];
@@ -47,6 +52,7 @@ export default class ForwardPlusRenderer extends BaseRenderer {
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 1) + 1] = scene.lights[i].color[1];
       this._lightTexture.buffer[this._lightTexture.bufferIndex(i, 1) + 2] = scene.lights[i].color[2];
     }
+
     // Update the light texture
     this._lightTexture.update();
 
@@ -76,6 +82,28 @@ export default class ForwardPlusRenderer extends BaseRenderer {
     gl.uniform1i(this._shaderProgram.u_clusterbuffer, 3);
 
     // TODO: Bind any other shader inputs
+
+    // Pass viewMatrix to convert depth into camera space
+    gl.uniformMatrix4fv(this._shaderProgram.u_viewMatrix, false, this._viewMatrix);
+
+    gl.uniform1f(this._shaderProgram.u_nearClip, camera.near);
+    gl.uniform1f(this._shaderProgram.u_farClip, camera.far);
+
+    // These are really integers, but have to convert to float in the
+    // shader for math, so might as well make them a float here.
+    gl.uniform1f(this._shaderProgram.u_canvasHeight, canvas.height);
+    gl.uniform1f(this._shaderProgram.u_canvasWidth, canvas.width);
+    gl.uniform1f(this._shaderProgram.u_xSlices, this._xSlices);
+    gl.uniform1f(this._shaderProgram.u_ySlices, this._ySlices);
+    gl.uniform1f(this._shaderProgram.u_zSlices, this._zSlices);
+
+    var width = this._xSlices * this._ySlices * this._zSlices;
+    var height = Math.ceil((MAX_LIGHTS_PER_CLUSTER + 1) / 4);
+    gl.uniform1i(this._shaderProgram.u_clusterTextureWidth, width);
+    gl.uniform1i(this._shaderProgram.u_clusterTextureHeight, height);
+
+    // For Blinn-Phong
+    gl.uniform3fv(this._shaderProgram.u_cameraPosition, camera.position);
 
     // Draw the scene. This function takes the shader program so that the model's textures can be bound to the right inputs
     scene.draw(this._shaderProgram);

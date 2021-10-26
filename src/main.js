@@ -4,6 +4,7 @@ import ForwardPlusRenderer from './renderers/forwardPlus';
 import ClusteredDeferredRenderer from './renderers/clusteredDeferred';
 import Scene from './scene';
 import Wireframe from './wireframe';
+import { vec3 } from 'gl-matrix';
 
 const FORWARD = 'Forward';
 const FORWARD_PLUS = 'Forward+';
@@ -22,10 +23,10 @@ function setRenderer(renderer) {
       params._renderer = new ForwardRenderer();
       break;
     case FORWARD_PLUS:
-      params._renderer = new ForwardPlusRenderer(15, 15, 15);
+      params._renderer = new ForwardPlusRenderer(15, 15, 15, camera);
       break;
     case CLUSTERED:
-      params._renderer = new ClusteredDeferredRenderer(15, 15, 15);
+      params._renderer = new ClusteredDeferredRenderer(15, 15, 15, camera);
       break;
   }
 }
@@ -44,8 +45,8 @@ const wireframe = new Wireframe();
 var segmentStart = [-14.0, 0.0, -6.0];
 var segmentEnd = [14.0, 20.0, 6.0];
 var segmentColor = [1.0, 0.0, 0.0];
-wireframe.addLineSegment(segmentStart, segmentEnd, segmentColor);
-wireframe.addLineSegment([-14.0, 1.0, -6.0], [14.0, 21.0, 6.0], [0.0, 1.0, 0.0]);
+// wireframe.addLineSegment(segmentStart, segmentEnd, segmentColor);
+// wireframe.addLineSegment([-14.0, 1.0, -6.0], [14.0, 21.0, 6.0], [0.0, 1.0, 0.0]);
 
 camera.position.set(-10, 8, 0);
 cameraControls.target.set(0, 2, 0);
@@ -53,7 +54,7 @@ gl.enable(gl.DEPTH_TEST);
 
 function render() {
   scene.update();  
-  params._renderer.render(camera, scene);
+  params._renderer.render(camera, scene, wireframe);
 
   // LOOK: Render wireframe "in front" of everything else.
   // If you would like the wireframe to render behind and in front
